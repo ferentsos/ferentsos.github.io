@@ -3,6 +3,7 @@
 @media(max-width:900px){.sidebar{width:188px}.content{margin:27px auto}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.product{grid-template-columns:minmax(0,2fr) repeat(3,1fr) 50px}.product .hide-sm{display:none}}
 @media(max-width:650px){.sidebar{display:none}.top{padding:14px}.content{padding:0 13px 35px}.title{font-size:27px}.ingredient{grid-template-columns:25px minmax(0,1fr) 90px;gap:6px;padding:8px}.ingredient .nutrition{grid-column:2/4}.grid,.grid.two{grid-template-columns:1fr}.product{grid-template-columns:1.5fr 1fr 1fr 40px}.product .hide-sm{display:none}}
 </style></head><body><div class="shell"><aside class="sidebar"><div class="brand"><span>F.</span>FerentsOS</div><nav class="nav"><small>ОСНОВНЕ</small><a href="index.html">⌂　Головна</a><small>ХАРЧУВАННЯ</small><a href="recipes.html">♨　Книга рецептів</a><a class="active" href="shopping.html">🛒　Покупки й продукти</a><small>ІНШІ МОДУЛІ</small><a href="index.html#fitness">◇　Тренування</a><a href="index.html#finance">▤　Фінанси</a></nav></aside><main class="main"><header class="top"><strong>FerentsOS / Харчування / Покупки й продукти</strong><span id="status">Перевіряємо вхід…</span></header><section class="content"><div class="eyebrow">ХАРЧУВАННЯ / ПЛАНУВАННЯ</div><h1 class="title">Покупки й база продуктів</h1><p class="subtitle">Додавай страви з Книги рецептів, накопичуй спільний список і веди власну калорійність продуктів. Усе зберігається в твоєму акаунті Supabase.</p>
+<div id="startupError" class="notice error hidden" role="alert"><strong>Помилка підключення</strong><p id="startupErrorText"></p><button class="btn" id="retryConnection" type="button">Спробувати знову</button></div>
 <div class="auth panel hidden" id="authPanel"><div class="panel-body"><h3>Потрібен вхід у FerentsOS</h3><p class="note">Увійди тим самим акаунтом, що і в Книгу рецептів.</p><form id="loginForm"><label class="field">Email<input required type="email" id="email" autocomplete="email"></label><label class="field">Пароль<input required type="password" id="password" autocomplete="current-password"></label><button class="btn primary" type="submit">Увійти</button><div id="loginError" class="note"></div></form></div></div>
 <div id="workspace" class="hidden"><div class="tabs"><button class="active" data-tab="shopping">🛒 Список покупок</button><button data-tab="products">▤ База продуктів</button></div>
 <div id="shoppingTab"><div class="grid"><div class="stat"><b id="countRecipes">0</b><span>Додавань страв</span></div><div class="stat"><b id="countItems">0</b><span>Рядків у списку</span></div><div class="stat"><b id="countChecked">0</b><span>Відмічено</span></div><div class="stat"><b id="countKnown">0</b><span>Рядків із розрахованими калоріями</span></div></div>
@@ -10,10 +11,10 @@
 <div class="panel"><div class="panel-header">Додати продукт вручну</div><form id="manualForm" class="panel-body"><div class="grid"><label class="field">Назва продукту<input id="manualName" required placeholder="Наприклад, молоко"></label><label class="field">Кількість<input id="manualQty" inputmode="decimal" type="number" min="0" step="any" placeholder="Наприклад, 500"></label><label class="field">Одиниця<input id="manualUnit" placeholder="г, мл, шт."></label><div class="field" style="justify-content:end"><button class="btn primary" type="submit">＋ Додати</button></div></div></form></div>
 <div class="panel"><div class="panel-header">Заплановані страви й додавання</div><div class="panel-body" id="sources"><p class="note">Поки порожньо.</p></div></div><div id="nutritionSummary" class="notice"></div></div>
 <div id="productsTab" class="hidden"><div class="notice">Тут зберігаються лише твої значення. Кожен показник вводиться <strong>на 100 г або на 100 мл</strong>. Для калорій не використовуються сторонні сайти, автоматичні здогадки чи середні значення.</div><div class="panel"><div class="panel-header">Новий продукт у власній базі</div><form id="productForm" class="panel-body"><div class="grid"><label class="field">Назва<input required id="productName" placeholder="Творог"></label><label class="field">Основа<select id="productBasis"><option value="g">на 100 г</option><option value="ml">на 100 мл</option></select></label><label class="field">Ккал / 100<input required type="number" min="0" step="any" id="productKcal"></label><label class="field">Білки, г / 100<input type="number" min="0" step="any" id="productProtein"></label><label class="field">Жири, г / 100<input type="number" min="0" step="any" id="productFat"></label><label class="field">Вуглеводи, г / 100<input type="number" min="0" step="any" id="productCarbs"></label><label class="field">Клітковина, г / 100<input type="number" min="0" step="any" id="productFiber"></label><label class="field">Джерело / примітка<input id="productNote" placeholder="Етикетка виробника"></label></div><div class="footer-actions"><button class="btn primary" id="saveProductBtn" type="submit">＋ Зберегти продукт</button><button class="btn hidden" type="button" id="cancelProductEdit">Скасувати редагування</button><span class="note">Точну калорійність беремо з твоїх власних даних.</span></div></form></div><div class="panel"><div class="panel-header">Моя база продуктів <span id="productCount" class="badge">0</span></div><div class="panel-body" id="productsList"></div></div></div></div></section></main></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script>
+<script>
 'use strict';
-const URL='https://vlpmmoxjeyjohqysebba.supabase.co',KEY='sb_publishable__009a5BT4lvoaSgJ3Z7bFQ_sfTpWwZo';
-const sb=window.supabase.createClient(URL,KEY),$=id=>document.getElementById(id);
+const SUPABASE_URL='https://vlpmmoxjeyjohqysebba.supabase.co',KEY='sb_publishable__009a5BT4lvoaSgJ3Z7bFQ_sfTpWwZo';
+let sb=null;const $=id=>document.getElementById(id);
 let user=null,batches=[],products=[],completed=new Set(),groupCache=[],editingProductId=null;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s||'').toLocaleLowerCase('uk-UA').trim().replace(/\s+/g,' ');
@@ -48,6 +49,30 @@ $('productsList').onclick=async e=>{
  const b=e.target.closest('[data-remove-product]');if(!b)return;if(!confirm('Видалити продукт з бази калорійності?'))return;const {error}=await sb.from('food_products').delete().eq('id',b.dataset.removeProduct);if(error)return fail(error);if(editingProductId===b.dataset.removeProduct)resetProductEdit();await load()
 };
 $('shoppingItems').onchange=e=>{const c=e.target.closest('[data-done]');if(!c)return;const k=decodeURIComponent(c.dataset.done);if(c.checked)completed.add(k);else completed.delete(k);try{localStorage.setItem('ferentsos_shopping_checked_'+user.id,JSON.stringify([...completed]))}catch{}render()};
-$('exportBtn').onclick=()=>{const blob=new Blob([JSON.stringify({format:'FerentsOS-shopping-v1',exported:new Date().toISOString(),batches,products},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='ferentsos-shopping-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-(async()=>{await start();if(user){try{completed=new Set(JSON.parse(localStorage.getItem('ferentsos_shopping_checked_'+user.id)||'[]'))}catch{}render()}})();
+$('exportBtn').onclick=()=>{const blob=new Blob([JSON.stringify({format:'FerentsOS-shopping-v1',exported:new Date().toISOString(),batches,products},null,2)],{type:'application/json'});const url=window.URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='ferentsos-shopping-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>window.URL.revokeObjectURL(url),1000)};
+
+// Graceful initialization even if a CDN is unavailable or the auth request stalls.
+function loadSupabaseScript(src){return new Promise((resolve,reject)=>{const el=document.createElement('script');el.src=src;el.onload=()=>window.supabase?.createClient?resolve():reject(new Error('Бібліотека Supabase не завантажилася'));el.onerror=()=>reject(new Error('Не вдалося завантажити '+src));document.head.appendChild(el)})}
+async function bootstrap(){
+ const status=$('status');
+ try {
+  if(!window.supabase?.createClient){
+   status.textContent='Підключаємо Supabase…';
+   try{await Promise.race([loadSupabaseScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Час завантаження вичерпано')),8000))])}
+   catch(first){await Promise.race([loadSupabaseScript('https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js'),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Другий CDN не відповідає')),8000))])}
+  }
+  sb=window.supabase.createClient(SUPABASE_URL,KEY);
+  status.textContent='Перевіряємо вхід…';
+  await Promise.race([start(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Не вдалося перевірити вхід за 15 секунд')),15000))]);
+  if(user){try{completed=new Set(JSON.parse(localStorage.getItem('ferentsos_shopping_checked_'+user.id)||'[]'))}catch{}render()}
+ } catch(err){
+  console.error('FerentsOS Shopping startup error:',err);
+  status.textContent='Не вдалося підключитися';
+  const panel=$('startupError');panel.classList.remove('hidden');
+  $('startupErrorText').textContent='Не вдалося запустити сторінку: '+(err?.message||String(err))+'. Перевір підключення до інтернету і спробуй ще раз.';
+ }
+}
+$('retryConnection').onclick=()=>{$('startupError').classList.add('hidden');bootstrap()};
+bootstrap();
+
 </script></body></html>
