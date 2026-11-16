@@ -74,7 +74,7 @@
 .portion-control strong{font-size:13px}
 .ingredient-editor{grid-column:1/-1;border:1px solid var(--line);border-radius:12px;padding:15px;background:var(--soft)}
 .ingredient-editor .editor-help{font-size:12px;color:var(--muted);line-height:1.6;margin:8px 0 15px}
-.ingredient-editor-row{display:grid;grid-template-columns:minmax(125px,2fr) minmax(72px,.65fr) minmax(80px,.85fr) minmax(110px,1.2fr) auto;gap:7px;align-items:center;margin:8px 0}
+.product-choice-menu{grid-column:1/-1;display:none;border:1px solid #c3d7c9;border-radius:9px;background:var(--bg);padding:5px;max-height:210px;overflow:auto;position:relative;z-index:10}.product-choice-menu.open{display:block}.product-option{display:block;width:100%;border:0;background:transparent;text-align:left;padding:9px 12px;color:var(--text);border-radius:6px;cursor:pointer;font-size:13px}.product-option:hover,.product-option:focus{background:#e8f4eb}.product-choice-state{grid-column:1/-1;color:var(--muted);font-size:12px;margin-top:-4px}.product-choice-state.pending{color:#a15d19}.ingredient-editor-row{display:grid;grid-template-columns:minmax(125px,2fr) minmax(72px,.65fr) minmax(80px,.85fr) minmax(110px,1.2fr) auto;gap:7px;align-items:center;margin:8px 0}
 .ingredient-editor-row input{width:100%;min-width:0;padding:10px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font-size:12px}
 .ingredient-editor-row .remove-ingredient{padding:8px 10px}
 .ingredient-editor-titles{font-size:11px;color:var(--muted);font-weight:650}
@@ -131,7 +131,21 @@ function scaledAmount(item,factor){
  if(amount&&item.scalable!==false&&/^\d+(?:[.,]\d+)?$/.test(amount))result=formatPortionNumber(Number(amount.replace(',','.'))*factor);
  return [result,unit,note].filter(Boolean).join(' · ').replace(/^([^·]+) · ([^·]+)(?: · (.+))?$/,(_,a,b,c)=>a+' '+b+(c?' · '+c:''));
 }
-function structuredInputRows(items){return items.map((it,i)=>`<div class="ingredient-editor-row" data-ingredient-row="1"><input class="ing-name" aria-label="Продукт ${i+1}" placeholder="Продукт" value="${esc(it.name||'')}"><input class="ing-quantity" aria-label="Кількість ${i+1}" inputmode="decimal" placeholder="400" value="${esc(it.quantity??'')}"><input class="ing-unit" aria-label="Одиниця ${i+1}" placeholder="г, шт., ст. л." value="${esc(it.unit||'')}"><input class="ing-note" aria-label="Примітка ${i+1}" placeholder="За смаком / примітка" value="${esc(it.note||'')}"><button type="button" class="ghost remove-ingredient" data-remove-ingredient="1" title="Прибрати рядок">×</button><label class="field-inline" style="grid-column:1/-1;margin:0 0 5px"><input type="checkbox" class="ing-scalable" ${it.scalable===false?'':'checked'}> Перераховувати кількість залежно від порцій</label></div>`).join('')}
+// FerentsOS v0.5: product selection is explicit; no inferred plural/synonym matching.
+let foodCatalogue=[];
+let catalogueReady=false;
+async function refreshFoodCatalogue(){
+ if(!cloudClient||!cloudUser)throw Error('Потрібен вхід у FerentsOS');
+ const {data,error}=await cloudClient.from('food_products').select('id,name,kcal,unit_basis').order('name');
+ if(error)throw error;
+ foodCatalogue=data||[];catalogueReady=true;
+}
+function productLabel(it){
+ if(it.productId){const p=foodCatalogue.find(p=>p.id===it.productId);return p?'✓ З бази: '+p.name:'⚠ Продукт не знайдено в базі — вибери знову';}
+ if(it.pendingProduct)return '⚠ Новий продукт — калорійність потрібно заповнити в базі';
+ return 'Вибери продукт зі списку або натисни «Створити»';
+}
+function structuredInputRows(items){return items.map((it,i)=>`<div class="ingredient-editor-row" data-ingredient-row="1"><input class="ing-name" aria-label="Продукт ${i+1}" autocomplete="off" placeholder="Почни вводити продукт…" value="${esc(it.name||'')}" data-product-id="${esc(it.productId||'')}" data-product-pending="${it.pendingProduct?1:0}"><input class="ing-quantity" aria-label="Кількість ${i+1}" inputmode="decimal" placeholder="400" value="${esc(it.quantity??'')}"><input class="ing-unit" aria-label="Одиниця ${i+1}" placeholder="г, шт., ст. л." value="${esc(it.unit||'')}"><input class="ing-note" aria-label="Примітка ${i+1}" placeholder="За смаком / примітка" value="${esc(it.note||'')}"><button type="button" class="ghost remove-ingredient" data-remove-ingredient="1" title="Прибрати рядок">×</button><div class="product-choice-menu" data-choice-menu></div><div class="product-choice-state ${it.pendingProduct?'pending':''}" data-product-state>${esc(productLabel(it))}</div><label class="field-inline" style="grid-column:1/-1;margin:0 0 5px"><input type="checkbox" class="ing-scalable" ${it.scalable===false?'':'checked'}> Перераховувати кількість залежно від порцій</label></div>`).join('')}
 function structuredBlock(r,isLegacy){
  const items=structuredItems(r)||[];
  if(!isLegacy&&!items.length)items.push({name:'',quantity:'',unit:'',note:'',scalable:true});
@@ -153,7 +167,7 @@ function detail(id){
  window.currentDetailId=id;
  const r=records.find(x=>x.id===id);if(!r)return;
  const items=structuredItems(r);
- const ingredients=items?items.map(it=>[it.name,scaledAmount(it,1)]):recipeLines(r.ingredients).map(ingredientParts).filter(Boolean);
+ const ingredients=items?items.map(it=>[foodCatalogue.find(p=>p.id===it.productId)?.name||it.name,scaledAmount(it,1)]):recipeLines(r.ingredients).map(ingredientParts).filter(Boolean);
  const steps=recipeInstructions(r.steps);
  const section=(icon,name,inside,side='')=>`<section class="recipe-detail-section"><div class="recipe-detail-heading">${icon}<h3>${name}</h3>${side}</div>${inside}</section>`;
  const progress=`<div class="recipe-progress"><span id="ingredientProgressText">0 із ${ingredients.length} підготовлено</span><div class="recipe-progress-track" aria-hidden="true"><div class="recipe-progress-bar" id="ingredientProgressBar"></div></div><button type="button" class="recipe-reset" id="ingredientReset" aria-label="Скинути позначки інгредієнтів">↻ Скинути</button></div>`;
@@ -163,7 +177,8 @@ function detail(id){
  showModal('Картка рецепта',`<div class="recipe-detail-intro"><div class="recipe-chips"><span class="recipe-chip">${esc(collectionLabels[r.collection]||'Гурман')}</span><span class="recipe-chip">${esc(r.category)}</span></div><h2>${esc(r.emoji||'🍽️')} ${esc(r.name)}</h2><p class="muted">${r.status==='idea'?'Ідея для приготування':'Записаний рецепт'}${r.time?' · '+esc(r.time):''}${r.rating?' · Смак '+esc(r.rating):''}</p></div>${portionSelector}${section(BASKET_ICON,'Інгредієнти',listing,ingredients.length?progress:'')}${section(POT_ICON,'Приготування',timeline)}${r.variantText?`<aside class="variant-note"><strong>${esc(r.variantTitle||'Альтернативний варіант')}</strong><div class="steps">${esc(r.variantText)}</div></aside>`:''}<div class="actions">${items&&items.length&&portionNumber(r.baseServings)?`<button type="button" class="primary" id="addRecipeToShop">🛒 До покупок</button>`:`<span class="muted" style="font-size:12px;margin-right:auto">Для покупок заповни структуровані інгредієнти й базові порції</span>`}<button class="ghost" data-edit="${esc(r.id)}">✎ Редагувати</button><button class="ghost" data-delete="${esc(r.id)}">Видалити</button><button class="primary" id="modalCloseAction">Готово</button></div>`);
  document.querySelector('#modal .dialog').classList.add('recipe-detail-dialog');
 }
-function editor(id){
+async function editor(id){
+ try{await refreshFoodCatalogue()}catch(err){alert('Не вдалося завантажити базу продуктів: '+err.message);return}
  editing=id;
  const r=id?records.find(x=>x.id===id):{name:'',category:'Інше',collection:'gourmet',source:'Власний запис',status:'recipe',emoji:'🍽️',time:'',rating:'',ingredients:'',steps:'',baseServings:'',yieldText:'',ingredientItems:[]};
  if(!r)return;
@@ -188,7 +203,7 @@ $('modalBody').addEventListener('click',async e=>{
  const items=ing.map(it=>{
    const raw=String(it.quantity??'').trim().replace(',','.');
    const quantity=/^\d+(?:\.\d+)?$/.test(raw)?Number(raw):null;
-   return {name:String(it.name).trim(), quantity: quantity===null?null:(it.scalable===false?quantity:Number((quantity*factor).toFixed(4))),unit:String(it.unit||'').trim(),note:String(it.note||'').trim(),scalable:it.scalable!==false,sourceQuantity:String(it.quantity??'').trim()};
+   return {product_id:it.productId||null,name:String(it.name).trim(), quantity: quantity===null?null:(it.scalable===false?quantity:Number((quantity*factor).toFixed(4))),unit:String(it.unit||'').trim(),note:String(it.note||'').trim(),scalable:it.scalable!==false,sourceQuantity:String(it.quantity??'').trim()};
  });
  button.disabled=true;const oldText=button.textContent;button.textContent='Зберігаємо…';
  try{
@@ -197,6 +212,35 @@ $('modalBody').addEventListener('click',async e=>{
    toast('Додано до списку покупок');
    button.textContent='✓ Додано';
  }catch(err){alert('Не вдалося додати до покупок. Перевір, чи виконав SQL для shopping_batches. '+(err.message||err));button.textContent=oldText;button.disabled=false}
+});
+function productMenu(row){
+ const input=row.querySelector('.ing-name'),menu=row.querySelector('[data-choice-menu]');
+ if(!input||!menu||!catalogueReady)return;
+ const q=input.value.trim().toLocaleLowerCase('uk-UA');
+ if(!q){menu.classList.remove('open');return}
+ const matches=foodCatalogue.filter(p=>p.name.toLocaleLowerCase('uk-UA').includes(q)).slice(0,12);
+ // Never auto-select, even on an exact name match.
+ menu.innerHTML=matches.map(p=>`<button class="product-option" type="button" data-pick-product="${esc(p.id)}">${esc(p.name)}${p.kcal===null?' · ⚠ немає калорійності':''}</button>`).join('')+
+   (foodCatalogue.some(p=>p.name.toLocaleLowerCase('uk-UA')===q)?'':`<button class="product-option" type="button" data-new-product="1">＋ Створити «${esc(input.value.trim())}» — без калорійності</button>`);
+ menu.classList.add('open');
+}
+$('modalBody').addEventListener('input',e=>{
+ if(!e.target.matches('.ing-name'))return;
+ const row=e.target.closest('[data-ingredient-row]');
+ e.target.dataset.productId='';e.target.dataset.productPending='0';
+ row.querySelector('[data-product-state]').textContent='Вибери продукт із підказок або створи новий';
+ productMenu(row);
+});
+$('modalBody').addEventListener('focusin',e=>{if(e.target.matches('.ing-name'))productMenu(e.target.closest('[data-ingredient-row]'))});
+$('modalBody').addEventListener('click',e=>{
+ const pick=e.target.closest('[data-pick-product]'),add=e.target.closest('[data-new-product]');
+ if(!pick&&!add)return;
+ const row=e.target.closest('[data-ingredient-row]');if(!row)return;
+ const input=row.querySelector('.ing-name'),state=row.querySelector('[data-product-state]');
+ if(pick){const p=foodCatalogue.find(p=>p.id===pick.dataset.pickProduct);if(!p)return;
+   input.value=p.name;input.dataset.productId=p.id;input.dataset.productPending='0';state.textContent='✓ Прив’язано: '+p.name;state.classList.remove('pending');}
+ else{input.dataset.productId='';input.dataset.productPending='1';state.textContent='⚠ Новий продукт, без калорійності';state.classList.add('pending');}
+ row.querySelector('[data-choice-menu]').classList.remove('open');
 });
 $('modalBody').addEventListener('click',e=>{
  if(e.target.id==='enableStructured'){
@@ -214,13 +258,32 @@ $('modalBody').addEventListener('click',e=>{
 });
 $('modalBody').addEventListener('change',e=>{if(!e.target.matches('[data-ingredient-check]'))return;const all=[...$('modalBody').querySelectorAll('[data-ingredient-check]')];const count=all.filter(x=>x.checked).length;const label=$('ingredientProgressText'),bar=$('ingredientProgressBar');if(label)label.textContent=`${count} із ${all.length} підготовлено`;if(bar)bar.style.width=(all.length?(count/all.length*100):0)+'%';e.target.closest('.recipe-ingredient')?.classList.toggle('checked',e.target.checked)});
 $('modalBody').addEventListener('click',e=>{if(e.target.closest('#ingredientReset')){const all=[...$('modalBody').querySelectorAll('[data-ingredient-check]')];all.forEach(x=>{x.checked=false;x.closest('.recipe-ingredient')?.classList.remove('checked')});const label=$('ingredientProgressText'),bar=$('ingredientProgressBar');if(label)label.textContent=`0 із ${all.length} підготовлено`;if(bar)bar.style.width='0%';}});
-$('modalBody').addEventListener('click',e=>{const edit=e.target.closest('[data-edit]'),del=e.target.closest('[data-delete]');if(edit)editor(edit.dataset.edit);if(del){if(confirm('Видалити цей рецепт?')){records=records.filter(r=>r.id!==del.dataset.delete);save();render();closeModal()}}if(e.target.id==='modalCloseAction'||e.target.id==='cancelEdit')closeModal()});$('modalBody').addEventListener('submit',e=>{if(e.target.id!=='recipeForm')return;e.preventDefault();const data=Object.fromEntries(new FormData(e.target));data.name=data.name.trim();if(!data.name)return toast('Вкажи назву');
+$('modalBody').addEventListener('click',e=>{const edit=e.target.closest('[data-edit]'),del=e.target.closest('[data-delete]');if(edit)editor(edit.dataset.edit);if(del){if(confirm('Видалити цей рецепт?')){records=records.filter(r=>r.id!==del.dataset.delete);save();render();closeModal()}}if(e.target.id==='modalCloseAction'||e.target.id==='cancelEdit')closeModal()});$('modalBody').addEventListener('submit',async e=>{if(e.target.id!=='recipeForm')return;e.preventDefault();const data=Object.fromEntries(new FormData(e.target));data.name=data.name.trim();if(!data.name)return toast('Вкажи назву');
  const form=e.target, structured=form.querySelector('#structuredIngredientBlock:not([hidden])');
  if(structured){
-  const ingredientItems=[...form.querySelectorAll('[data-ingredient-row]')].map(row=>({name:row.querySelector('.ing-name').value.trim(),quantity:row.querySelector('.ing-quantity').value.trim(),unit:row.querySelector('.ing-unit').value.trim(),note:row.querySelector('.ing-note').value.trim(),scalable:row.querySelector('.ing-scalable').checked})).filter(x=>x.name);
+  const ingredientItems=[...form.querySelectorAll('[data-ingredient-row]')].map(row=>({name:row.querySelector('.ing-name').value.trim(),quantity:row.querySelector('.ing-quantity').value.trim(),unit:row.querySelector('.ing-unit').value.trim(),note:row.querySelector('.ing-note').value.trim(),scalable:row.querySelector('.ing-scalable').checked,productId:row.querySelector('.ing-name').dataset.productId||null,pendingProduct:row.querySelector('.ing-name').dataset.productPending==='1'})).filter(x=>x.name);
   if(ingredientItems.some(x=>x.quantity&&!/^\d+(?:[.,]\d+)?$/.test(x.quantity))){alert('У полі «Кількість» використовуй число (наприклад 1,5). Текстові кількості внеси в «Примітка».');return}
   if(ingredientItems.some(x=>x.scalable&&(!x.quantity||!portionNumber(x.quantity)))){alert('Для перерахунку потрібна числова кількість. Вкажи число або зніми галочку «Перераховувати».');return}
   if(ingredientItems.length&&!portionNumber(data.baseServings)){alert('Вкажи базову кількість порцій для структурованого рецепта.');return}
+  if(!cloudClient||!cloudUser){alert('Спочатку увійди в FerentsOS');return}
+  if(ingredientItems.some(x=>!x.productId&&!x.pendingProduct)){
+   alert('Кожен інгредієнт потрібно вибрати із бази або явно створити як новий. Без автоматичного вгадування.');return;
+  }
+  // Create missing catalogue entries only at final form submission.
+  // Existing products are always referenced by immutable UUID, not their text names.
+  const submit=form.querySelector('button[type="submit"]');if(submit)submit.disabled=true;
+  try{
+   const newByName=new Map();
+   for(const item of ingredientItems){
+    if(!item.pendingProduct)continue;
+    const key=item.name.trim().toLocaleLowerCase('uk-UA');
+    let known=foodCatalogue.find(p=>p.name.toLocaleLowerCase('uk-UA')===key);
+    if(known){if(!confirm('Продукт «'+known.name+'» уже є в базі. Використати його замість створення нового?'))throw Error('Збереження скасовано');item.productId=known.id;item.name=known.name;item.pendingProduct=false;continue}
+    if(newByName.has(key)){item.productId=newByName.get(key);item.pendingProduct=false;continue}
+    const {data:created,error}=await cloudClient.from('food_products').insert({user_id:cloudUser.id,name:item.name,unit_basis:'g',kcal:null,auto_created:true}).select('id,name,kcal,unit_basis').single();
+    if(error)throw error;foodCatalogue.push(created);item.productId=created.id;item.pendingProduct=false;newByName.set(key,created.id);
+   }
+  }catch(err){alert('Не вдалося створити продукт: '+(err.message||err));if(submit)submit.disabled=false;return}
   data.ingredientItems=ingredientItems;
   // Text fallback for search and compatibility with old backups; structured items are authoritative.
   data.ingredients=ingredientItems.map(it=>[it.name,[it.quantity,it.unit,it.note].filter(Boolean).join(' ')].filter(Boolean).join(' — ')).join('\n');
